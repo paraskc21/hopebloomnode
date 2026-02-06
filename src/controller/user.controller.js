@@ -28,9 +28,9 @@ function validateRegister(body) {
   }
 
   if (role !== undefined && role !== null && role !== "") {
-    const allowed = ["user", "admin", "doctor"];
+    const allowed = ["user", "doctor"];
     if (!allowed.includes(String(role).toLowerCase())) {
-      errors.push("Role must be one of: user, admin, doctor");
+      errors.push("Role must be one of: user, doctor");
     }
   }
 
@@ -73,7 +73,7 @@ async function createUser(req, res) {
     const { username, password, role, name, phone, specialization, licenseNumber } = req.body;
     const trimmedUsername = username.trim().toLowerCase();
     const normalizedRole = role ? String(role).toLowerCase() : "user";
-    const allowedRoles = ["user", "admin", "doctor"];
+    const allowedRoles = ["user", "doctor"];
     const finalRole = allowedRoles.includes(normalizedRole) ? normalizedRole : "user";
 
     const existing = await User.findOne({ username: trimmedUsername });
@@ -227,8 +227,94 @@ async function getProfile(req, res) {
   }
 }
 
+/**
+ * POST /api/auth/assign-admin (protected - superuser only)
+ * Assign admin role to a user (only superusers can do this)
+ */
+async function assignAdminRole(req, res) {
+  try {
+    // Check if the current user is a superuser
+    if (req.user.role !== "superuser") {
+      return res.status(403).json({
+        success: false,
+        message: "Only superusers can assign admin roles",
+      });
+    }
+
+    const { targetUserId } = req.body;
+
+    if (!targetUserId) {
+      return res.status(400).json({
+        success: false,
+        message: "Target user ID is required",
+      });
+    }
+
+    const targetUser = await User.findById(targetUserId);
+    if (!targetUser) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Update the user's role to admin
+    targetUser.role = "admin";
+    await targetUser.save();
+
+    res.json({
+      success: true,
+      message: `${targetUser.username} has been promoted to admin`,
+      user: {
+        id: targetUser._id,
+        username: targetUser.username,
+        role: targetUser.role,
+        name: targetUser.name,
+      },
+    });
+  } catch (err) {
+    console.error("Assign admin error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to assign admin role",
+    });
+  }
+}
+
+/**
+ * GET /api/auth/users (protected - superuser only)
+ * Get list of all users (only superusers can do this)
+ */
+async function getAllUsers(req, res) {
+  try {
+    // Check if the current user is a superuser
+    if (req.user.role !== "superuser") {
+      return res.status(403).json({
+        success: false,
+        message: "Only superusers can view all users",
+      });
+    }
+
+    const users = await User.find({}, "-password");
+    
+    res.json({
+      success: true,
+      message: "Users retrieved successfully",
+      users: users,
+    });
+  } catch (err) {
+    console.error("Get users error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to retrieve users",
+    });
+  }
+}
+
 module.exports = {
   createUser,
   loginUser,
   getProfile,
+  assignAdminRole,
+  getAllUsers,
 };
